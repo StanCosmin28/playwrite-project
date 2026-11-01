@@ -1,0 +1,977 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Using Playwright</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Instrument+Serif:ital@0;1&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #07080a;
+  --bg-glow: rgba(69, 208, 106, .10);
+  --panel: #101318;
+  --panel-2: #151a20;
+  --line: rgba(255,255,255,.08);
+  --line-2: rgba(255,255,255,.14);
+  --text: #f3f4f6;
+  --muted: #9aa1ab;
+  --dim: #5d646e;
+  --green: #45d06a;
+  --green-soft: rgba(69,208,106,.12);
+  --red: #ff6b5e;
+  --red-soft: rgba(255,107,94,.10);
+  --amber: #f5b84a;
+  --blue: #6aa8ff;
+  --violet: #a78bfa;
+  --violet-soft: rgba(167,139,250,.12);
+  /* code panels stay dark in both themes */
+  --code-bg: #0c0f13;
+  --code-text: #d6dae0;
+  --code-line: rgba(255,255,255,.07);
+  --serif: 'Instrument Serif', Georgia, serif;
+  --sans: 'Inter', system-ui, sans-serif;
+  --mono: 'JetBrains Mono', ui-monospace, monospace;
+}
+[data-theme="light"] {
+  --bg: #f6f5f1;
+  --bg-glow: rgba(22,163,74,.10);
+  --panel: #ffffff;
+  --panel-2: #f0efea;
+  --line: rgba(0,0,0,.09);
+  --line-2: rgba(0,0,0,.16);
+  --text: #0b0d10;
+  --muted: #4b5563;
+  --dim: #9097a1;
+  --green: #16a34a;
+  --green-soft: rgba(22,163,74,.10);
+  --red: #dc4a3d;
+  --red-soft: rgba(220,74,61,.08);
+  --amber: #c27c0e;
+  --blue: #2563eb;
+  --violet: #7c3aed;
+  --violet-soft: rgba(124,58,237,.08);
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; background: var(--bg); overflow: hidden; }
+body { font-family: var(--sans); color: var(--text); -webkit-font-smoothing: antialiased; transition: background .4s; }
+
+/* ---------- Stage (1920×1080, scaled to fit) ---------- */
+#stage {
+  position: absolute; top: 50%; left: 50%;
+  width: 1920px; height: 1080px;
+  transform-origin: center center;
+}
+.slide {
+  position: absolute; inset: 0;
+  padding: 110px 140px 120px;
+  display: flex; flex-direction: column;
+  opacity: 0; visibility: hidden;
+  transition: opacity .5s ease, visibility 0s linear .5s;
+  overflow: hidden;
+}
+.slide.active { opacity: 1; visibility: visible; transition: opacity .5s ease, visibility 0s; }
+.slide::before {
+  content: ''; position: absolute; inset: 0; pointer-events: none;
+  background: radial-gradient(1200px 700px at 85% -10%, var(--bg-glow), transparent 60%);
+}
+.slide > * { position: relative; }
+.notes { display: none; }
+
+/* Staggered reveal on slide enter */
+.r { opacity: 0; transform: translateY(28px); filter: blur(6px); }
+.slide.active .r {
+  opacity: 1; transform: none; filter: none;
+  transition: opacity .8s cubic-bezier(.2,.7,.2,1), transform .8s cubic-bezier(.2,.7,.2,1), filter .8s;
+  transition-delay: calc(var(--i, 0) * 110ms + 120ms);
+}
+
+/* ---------- Type ---------- */
+.kicker {
+  font-family: var(--mono); font-size: 22px; font-weight: 500;
+  letter-spacing: .18em; text-transform: uppercase; color: var(--green);
+  margin-bottom: 28px; display: flex; align-items: center; gap: 16px;
+}
+.kicker::before { content: ''; width: 36px; height: 2px; background: currentColor; }
+h1 { font-size: 168px; line-height: .95; font-weight: 800; letter-spacing: -.045em; }
+h2 { font-size: 72px; line-height: 1.05; font-weight: 700; letter-spacing: -.035em; max-width: 1500px; margin-bottom: 64px; }
+h3 { font-size: 34px; font-weight: 650; letter-spacing: -.02em; margin-bottom: 12px; }
+em { font-family: var(--serif); font-style: italic; font-weight: 400; letter-spacing: -.01em; color: var(--green); }
+p { font-size: 28px; line-height: 1.5; color: var(--muted); }
+.lead { font-size: 38px; line-height: 1.4; color: var(--muted); max-width: 1300px; }
+.mono { font-family: var(--mono); }
+.small { font-size: 22px; }
+.foot { margin-top: auto; font-size: 24px; color: var(--muted); display: flex; gap: 14px; align-items: center; }
+.foot b { color: var(--text); font-weight: 600; }
+
+/* ---------- Building blocks ---------- */
+.card {
+  background: var(--panel); border: 1px solid var(--line);
+  border-radius: 24px; padding: 40px;
+  box-shadow: 0 30px 60px -30px rgba(0,0,0,.45);
+}
+.grid { display: grid; gap: 28px; }
+.row { display: flex; gap: 48px; }
+.col { display: flex; flex-direction: column; gap: 24px; }
+.f1 { flex: 1; min-width: 0; }
+.center { align-items: center; justify-content: center; text-align: center; }
+.tag {
+  display: inline-flex; align-items: center; gap: 10px;
+  font-family: var(--mono); font-size: 18px; letter-spacing: .08em; text-transform: uppercase;
+  padding: 8px 14px; border-radius: 999px; border: 1px solid var(--line-2); color: var(--muted);
+}
+.tag.ok { color: var(--green); border-color: color-mix(in srgb, var(--green) 40%, transparent); background: var(--green-soft); }
+.tag.bad { color: var(--red); border-color: color-mix(in srgb, var(--red) 40%, transparent); background: var(--red-soft); }
+
+.code {
+  background: var(--code-bg); border: 1px solid var(--code-line); border-radius: 22px;
+  overflow: hidden; box-shadow: 0 40px 80px -40px rgba(0,0,0,.6);
+}
+.code-head {
+  display: flex; align-items: center; gap: 10px; padding: 18px 24px;
+  border-bottom: 1px solid var(--code-line); font-family: var(--mono); font-size: 18px; color: #7d8590;
+}
+.code-head i { width: 13px; height: 13px; border-radius: 50%; background: #2b3138; display: block; }
+.code-head span { margin-left: 12px; }
+.code pre { font-variant-ligatures: none; padding: 30px 36px; font-family: var(--mono); font-size: 26px; line-height: 1.6; color: var(--code-text); white-space: pre; }
+.k { color: #c792ea; } .s { color: #a5e3a1; } .f { color: #82aaff; } .c { color: #5f6b78; font-style: italic; }
+.v { color: #f2c38b; } .p { color: #6b7380; } .g { color: #45d06a; } .rd { color: #ff7b72; }
+.anatomy pre { font-size: 22.5px; }
+.mark { background: rgba(69,208,106,.13); border-radius: 6px; box-shadow: 0 0 0 4px rgba(69,208,106,.13); }
+
+/* Number badges */
+.num {
+  flex: none; width: 48px; height: 48px; border-radius: 50%;
+  display: grid; place-items: center; font-family: var(--mono); font-weight: 700; font-size: 22px;
+  background: var(--green); color: #04130a;
+}
+
+/* ---------- Slide 1: title ---------- */
+.aurora { position: absolute; inset: -20%; filter: blur(90px); opacity: .55; pointer-events: none; }
+.aurora i { position: absolute; border-radius: 50%; display: block; }
+.aurora i:nth-child(1) { width: 900px; height: 900px; background: #1f9d4a; left: 55%; top: 0%; animation: drift 18s ease-in-out infinite alternate; }
+.aurora i:nth-child(2) { width: 700px; height: 700px; background: #c7473c; left: 70%; top: 45%; opacity: .55; animation: drift 22s ease-in-out infinite alternate-reverse; }
+.aurora i:nth-child(3) { width: 600px; height: 600px; background: #3b5bd9; left: 35%; top: 60%; opacity: .35; animation: drift 26s ease-in-out infinite alternate; }
+[data-theme="light"] .aurora { opacity: .28; }
+@keyframes drift { to { transform: translate(-140px, 90px) scale(1.15); } }
+.gridbg {
+  position: absolute; inset: 0; pointer-events: none;
+  background-image: linear-gradient(var(--line) 1px, transparent 1px), linear-gradient(90deg, var(--line) 1px, transparent 1px);
+  background-size: 80px 80px;
+  mask-image: radial-gradient(ellipse at 30% 50%, #000 20%, transparent 75%);
+}
+.term-line {
+  margin-top: 64px; display: inline-flex; align-items: center; gap: 18px; align-self: flex-start;
+  font-family: var(--mono); font-size: 30px; padding: 22px 32px;
+  background: color-mix(in srgb, var(--panel) 80%, transparent); border: 1px solid var(--line-2); border-radius: 16px;
+  backdrop-filter: blur(10px);
+}
+.term-line .pr { color: var(--green); }
+.caret { width: 14px; height: 34px; background: var(--green); animation: blink 1.1s steps(1) infinite; }
+@keyframes blink { 50% { opacity: 0; } }
+.engines { margin-top: 48px; display: flex; gap: 14px; }
+
+/* ---------- Slide 2: problem ---------- */
+.sleep {
+  font-family: var(--mono); font-size: 84px; font-weight: 500; position: relative; display: inline-block; color: var(--text);
+}
+.sleep::after {
+  content: ''; position: absolute; left: -10px; right: -10px; top: 52%; height: 8px; background: var(--red); border-radius: 4px;
+  transform: scaleX(0); transform-origin: left;
+}
+.slide.active .sleep::after { transform: scaleX(1); transition: transform .7s cubic-bezier(.7,0,.2,1) 1.1s; }
+.problem { display: grid; grid-template-columns: repeat(3, 1fr); gap: 28px; margin-top: 64px; }
+.problem .card { padding: 36px 36px 40px; }
+.problem .idx { font-family: var(--mono); color: var(--red); font-size: 22px; margin-bottom: 20px; }
+.problem p { font-size: 25px; }
+.problem code { font-family: var(--mono); font-size: 21px; color: var(--red); }
+
+/* ---------- Slide 3: facts ---------- */
+.facts { grid-template-columns: repeat(4, 1fr); }
+.fact .big { font-size: 112px; font-weight: 800; letter-spacing: -.05em; line-height: 1; margin-bottom: 18px; }
+.fact .big.sm { font-size: 72px; line-height: 112px; white-space: nowrap; letter-spacing: -.04em; }
+.fact h3 { font-size: 28px; }
+.fact p { font-size: 23px; }
+
+/* ---------- Slide 4: protocol lanes ---------- */
+.lane { display: grid; grid-template-columns: 400px 1fr; gap: 48px; align-items: center; padding: 32px 44px; }
+.lane + .lane { margin-top: 28px; }
+.lane h3 { margin-bottom: 8px; }
+.lane p { font-size: 21px; line-height: 1.45; }
+.lane h3 { font-size: 30px; }
+.flow { display: flex; align-items: center; }
+.node {
+  flex: none; padding: 20px 26px; border-radius: 16px; border: 1px solid var(--line-2);
+  font-family: var(--mono); font-size: 22px; background: var(--panel-2); white-space: nowrap;
+}
+.wire { flex: 1; height: 2px; background: var(--line-2); position: relative; margin: 0 6px; }
+.wire small { position: absolute; left: 50%; top: -42px; transform: translateX(-50%); font-family: var(--mono); font-size: 17px; color: var(--muted); white-space: nowrap; }
+.wire .dot { position: absolute; top: -6px; width: 14px; height: 14px; border-radius: 50%; }
+.lane.legacy .dot { background: var(--red); animation: roundtrip 2.6s ease-in-out infinite; }
+.lane.legacy .wire { background: repeating-linear-gradient(90deg, var(--line-2) 0 10px, transparent 10px 18px); }
+@keyframes roundtrip { 0% { left: 0; opacity: 0 } 8% { opacity: 1 } 45% { left: calc(100% - 14px) } 55% { left: calc(100% - 14px) } 92% { opacity: 1 } 100% { left: 0; opacity: 0 } }
+.lane.modern .wire { background: var(--green); box-shadow: 0 0 18px var(--green); }
+.lane.modern .dot { background: #fff; box-shadow: 0 0 12px var(--green); animation: stream 1.1s linear infinite; }
+.lane.modern .dot.b { animation-direction: reverse; animation-duration: 1.4s; background: var(--green); }
+.lane.modern .dot.c { animation-delay: -.55s; }
+@keyframes stream { from { left: 0 } to { left: calc(100% - 14px) } }
+.lane.modern .node.hl { border-color: var(--green); color: var(--green); background: var(--green-soft); }
+.engines-stack { display: flex; flex-direction: column; gap: 10px; }
+.engines-stack .node { padding: 10px 18px; font-size: 19px; }
+
+/* ---------- Slide 5: isolation ---------- */
+.browser-box { border: 2px solid var(--line-2); border-radius: 28px; padding: 64px 40px 40px; position: relative; }
+.browser-box > .label { position: absolute; top: -22px; left: 36px; background: var(--bg); padding: 0 16px; font-family: var(--mono); font-size: 24px; }
+.ctxs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 22px; }
+.ctx { border: 2px dashed var(--c); border-radius: 18px; padding: 26px; background: color-mix(in srgb, var(--c) 7%, transparent); }
+.ctx .t { font-family: var(--mono); color: var(--c); font-size: 21px; margin-bottom: 16px; }
+.ctx ul { list-style: none; font-size: 20px; color: var(--muted); display: flex; flex-direction: column; gap: 6px; margin-bottom: 18px; }
+.ctx .tab { border: 1px solid var(--line-2); background: var(--panel); border-radius: 10px; padding: 10px; text-align: center; font-size: 18px; font-family: var(--mono); }
+
+/* ---------- Slide 8: auto-wait pipeline ---------- */
+.checks { display: flex; align-items: center; gap: 0; margin: 56px 0 48px; }
+.chk {
+  flex: 1; text-align: center; padding: 30px 12px; border-radius: 20px; border: 1px solid var(--line-2);
+  background: var(--panel); font-size: 26px; font-weight: 600; position: relative;
+}
+.chk .ico {
+  width: 56px; height: 56px; border-radius: 50%; margin: 0 auto 16px; display: grid; place-items: center;
+  border: 2px solid var(--line-2); color: transparent; font-size: 28px; font-weight: 800;
+}
+.chk small { display: block; font-size: 18px; font-weight: 400; color: var(--muted); margin-top: 6px; }
+.chk-arrow { width: 36px; height: 2px; background: var(--line-2); flex: none; }
+.slide.active .chk .ico { animation: tick .45s forwards; animation-delay: calc(var(--n) * .55s + 1s); }
+.slide.active .chk { animation: glow .45s forwards; animation-delay: calc(var(--n) * .55s + 1s); }
+@keyframes tick { to { background: var(--green); border-color: var(--green); color: #04130a; } }
+@keyframes glow { to { border-color: var(--green); } }
+.chk.go { background: var(--green); color: #04130a; border-color: var(--green); opacity: .25; }
+.chk.go small { color: #0b3a1c; }
+.slide.active .chk.go { animation: pop .5s forwards; animation-delay: 3.8s; }
+@keyframes pop { 0% { opacity: .25; transform: scale(1) } 60% { transform: scale(1.06) } 100% { opacity: 1; transform: scale(1) } }
+
+/* ---------- Slide 9: locators ---------- */
+.ladder { display: flex; flex-direction: column; gap: 14px; }
+.rung { display: flex; align-items: center; gap: 22px; padding: 20px 26px; border-radius: 16px; border: 1px solid var(--line); background: var(--panel); font-family: var(--mono); font-size: 25px; }
+.rung .lvl { width: 14px; height: 14px; border-radius: 50%; background: var(--green); flex: none; }
+.rung:nth-child(2) .lvl { opacity: .8 } .rung:nth-child(3) .lvl { opacity: .6 } .rung:nth-child(4) .lvl { opacity: .4 }
+.rung.last { color: var(--muted); border-style: dashed; } .rung.last .lvl { background: var(--red); }
+.rung small { margin-left: auto; font-family: var(--sans); font-size: 19px; color: var(--muted); }
+.vs { border-radius: 20px; padding: 30px 34px; border: 1px solid; }
+.vs.bad { border-color: color-mix(in srgb, var(--red) 35%, transparent); background: var(--red-soft); }
+.vs.ok { border-color: color-mix(in srgb, var(--green) 35%, transparent); background: var(--green-soft); }
+.vs code { display: block; font-family: var(--mono); font-size: 24px; margin: 16px 0 12px; color: var(--text); word-break: break-all; }
+.vs p { font-size: 22px; }
+
+/* ---------- Slide 10: superpowers ---------- */
+.powers { grid-template-columns: repeat(3, 1fr); }
+.power { padding: 36px 36px 32px; display: flex; flex-direction: column; }
+.power .ico { font-size: 40px; margin-bottom: 18px; color: var(--green); font-family: var(--mono); }
+.power h3 { font-size: 32px; margin-bottom: 8px; }
+.power p { font-size: 22px; margin-bottom: 22px; }
+.power code {
+  margin-top: auto; font-family: var(--mono); font-size: 19px; color: var(--code-text);
+  background: var(--code-bg); border-radius: 12px; padding: 14px 16px; display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+
+/* ---------- Slide 11: trace viewer ---------- */
+.trace { display: grid; grid-template-columns: 470px 1fr; grid-template-rows: auto 1fr auto; height: 640px; }
+.trace .tabs { grid-column: 1 / -1; display: flex; gap: 6px; padding: 14px 20px; border-bottom: 1px solid var(--code-line); font-family: var(--mono); font-size: 18px; color: #7d8590; }
+.trace .tabs span { padding: 6px 14px; border-radius: 8px; }
+.trace .tabs span.on { background: #1b2129; color: #e6edf3; }
+.trace .acts { border-right: 1px solid var(--code-line); padding: 16px; font-family: var(--mono); font-size: 19px; color: #c9d1d9; display: flex; flex-direction: column; gap: 8px; }
+.trace .act { padding: 12px 14px; border-radius: 10px; display: flex; justify-content: space-between; border-left: 3px solid transparent; }
+.trace .act.sel { background: #18202a; border-left-color: var(--blue); }
+.trace .act.err { background: rgba(255,107,94,.1); border-left-color: #ff6b5e; color: #ff8a80; }
+.trace .act small { color: #6e7681; }
+.trace .shot { background: #f4f4f5; position: relative; overflow: hidden; }
+.trace .app { position: absolute; inset: 40px 60px; background: #fff; border-radius: 14px; box-shadow: 0 20px 40px rgba(0,0,0,.12); padding: 36px; color: #111; font-family: var(--sans); }
+.trace .app h4 { font-size: 30px; margin-bottom: 22px; }
+.trace .inp { height: 50px; border: 1px solid #d4d4d8; border-radius: 8px; margin-bottom: 14px; }
+.trace .btn { display: inline-block; background: #2563eb; color: #fff; padding: 14px 28px; border-radius: 8px; font-size: 20px; font-weight: 600; position: relative; margin-top: 6px; }
+.trace .btn::after { content: ''; position: absolute; right: -14px; top: -14px; width: 30px; height: 30px; border-radius: 50%; border: 3px solid #ef4444; background: rgba(239,68,68,.2); animation: ping 1.6s infinite; }
+@keyframes ping { 50% { transform: scale(1.35); opacity: .5 } }
+.trace .banner { position: absolute; left: 0; right: 0; bottom: 0; background: #111827; color: #fff; padding: 22px 30px; font-size: 18px; display: flex; justify-content: space-between; align-items: center; }
+.trace .banner b { background: #fff; color: #111; padding: 8px 16px; border-radius: 6px; }
+.trace .err-box { grid-column: 1 / -1; background: #2a1414; color: #ffb4ac; font-family: var(--mono); font-size: 19px; padding: 16px 24px; border-top: 1px solid #4b1f1f; }
+.film { grid-column: 1/-1; }
+.scrub { height: 6px; background: #1b2129; position: relative; margin: 0 20px 0; }
+.scrub::after { content: ''; position: absolute; top: -7px; width: 4px; height: 20px; background: var(--blue); border-radius: 2px; animation: scrub 6s ease-in-out infinite alternate; }
+@keyframes scrub { from { left: 2% } to { left: 96% } }
+
+/* ---------- Slide 12: demo ---------- */
+.demo-steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 28px; margin-top: 16px; }
+.demo-steps .card { padding: 36px; }
+.demo-steps code { display: block; font-family: var(--mono); font-size: 21px; color: var(--green); margin: 18px 0 14px; word-break: break-word; }
+.demo-steps p { font-size: 23px; }
+.live-dot { display: inline-block; width: 22px; height: 22px; border-radius: 50%; background: var(--red); box-shadow: 0 0 0 0 var(--red); animation: live 1.6s infinite; vertical-align: middle; margin-right: 18px; }
+@keyframes live { 70% { box-shadow: 0 0 0 22px transparent } 100% { box-shadow: 0 0 0 0 transparent } }
+
+/* ---------- Slide 13: pivot ---------- */
+.pivot h2 { font-size: 150px; line-height: .98; letter-spacing: -.05em; margin: 0 auto 56px; }
+.pivot h2 em { color: var(--violet); }
+.pivot .quote { font-family: var(--serif); font-style: italic; font-size: 44px; color: var(--text); max-width: 1300px; margin: 0 auto; line-height: 1.3; }
+.pivot .src { font-family: var(--mono); font-size: 20px; color: var(--dim); margin-top: 22px; }
+.s-ai .kicker, .s-ai em { color: var(--violet); }
+.s-ai::before { background: radial-gradient(1200px 700px at 85% -10%, var(--violet-soft), transparent 60%); }
+
+/* ---------- Slide 14: html vs aria ---------- */
+.versus { display: grid; grid-template-columns: 1fr 200px 1fr; align-items: stretch; }
+.versus .code pre { font-size: 20px; line-height: 1.55; height: 470px; overflow: hidden; }
+.noise { color: #59616b; }
+.noise b { color: #8b949e; font-weight: 400; }
+.meter { display: flex; align-items: baseline; gap: 14px; padding: 18px 24px; border-top: 1px solid var(--code-line); font-family: var(--mono); font-size: 20px; color: #8b949e; }
+.meter strong { font-size: 34px; color: #e6edf3; }
+.arrow-mid { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; text-align: center; }
+.arrow-mid .x { font-size: 84px; font-weight: 800; letter-spacing: -.04em; color: var(--violet); line-height: 1; }
+.arrow-mid small { font-size: 19px; color: var(--muted); }
+.ref { color: var(--violet); }
+
+/* ---------- Slide 15: agent loop ---------- */
+.loop { position: relative; width: 800px; height: 640px; flex: none; }
+.loop .ring { position: absolute; left: 150px; top: 70px; width: 500px; height: 500px; border-radius: 50%; border: 2px dashed var(--line-2); animation: spin 40s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg) } }
+.loop .hub { position: absolute; left: 300px; top: 220px; width: 200px; height: 200px; border-radius: 50%; display: grid; place-items: center; text-align: center; background: var(--violet-soft); border: 1px solid color-mix(in srgb, var(--violet) 40%, transparent); }
+.loop .hub b { font-family: var(--mono); font-size: 40px; color: var(--violet); display: block; }
+.loop .hub small { font-size: 17px; color: var(--muted); }
+.step { position: absolute; width: 300px; padding: 22px 24px; border-radius: 18px; background: var(--panel); border: 1px solid var(--line-2); animation: cycle 8s infinite; animation-delay: calc(var(--n) * 2s); }
+.step b { display: block; font-size: 27px; margin-bottom: 6px; }
+.step span { font-size: 19px; color: var(--muted); font-family: var(--mono); }
+.step.s1 { left: 250px; top: 0; } .step.s2 { left: 500px; top: 260px; } .step.s3 { left: 250px; top: 520px; } .step.s4 { left: 0; top: 260px; }
+@keyframes cycle { 0%, 22% { border-color: var(--violet); box-shadow: 0 0 0 6px var(--violet-soft), 0 20px 40px -10px rgba(0,0,0,.4); transform: scale(1.04) } 30%, 100% { border-color: var(--line-2); box-shadow: none; transform: none } }
+.try code { display: block; font-family: var(--mono); font-size: 22px; color: var(--text); background: var(--panel-2); border: 1px solid var(--line); border-radius: 12px; padding: 16px 20px; margin: 12px 0 10px; }
+.try p { font-size: 22px; }
+.agents { display: flex; gap: 10px; margin-top: 8px; }
+
+/* ---------- Slide 16: takeaways ---------- */
+.takeaways { display: flex; flex-direction: column; gap: 22px; }
+.take { display: flex; align-items: center; gap: 36px; padding: 32px 44px; }
+.take .n { font-family: var(--serif); font-style: italic; font-size: 88px; color: var(--green); width: 70px; line-height: 1; }
+.take h3 { font-size: 44px; margin: 0; }
+.take p { font-size: 26px; margin-left: auto; font-family: var(--mono); }
+.links { display: flex; gap: 14px; flex-wrap: wrap; }
+
+/* ---------- Chrome: progress, counter, notes, overview, help ---------- */
+#progress { position: fixed; left: 0; bottom: 0; height: 3px; background: var(--green); transition: width .5s cubic-bezier(.2,.7,.2,1); z-index: 20; }
+#counter { position: fixed; right: 22px; bottom: 16px; font-family: var(--mono); font-size: 13px; color: var(--dim); z-index: 20; letter-spacing: .08em; }
+#hint {
+  position: fixed; left: 50%; bottom: 22px; transform: translateX(-50%); z-index: 30;
+  font-family: var(--mono); font-size: 13px; color: var(--muted); background: var(--panel);
+  border: 1px solid var(--line); border-radius: 999px; padding: 10px 18px; transition: opacity .6s;
+}
+#hint kbd { font-family: inherit; color: var(--text); background: var(--panel-2); border: 1px solid var(--line-2); border-radius: 5px; padding: 1px 6px; margin: 0 2px; }
+#notes-overlay {
+  position: fixed; left: 0; right: 0; bottom: 0; max-height: 42vh; overflow: auto; z-index: 40;
+  background: color-mix(in srgb, var(--panel) 94%, transparent); backdrop-filter: blur(16px);
+  border-top: 1px solid var(--line-2); padding: 22px 40px 30px; font-size: 18px; line-height: 1.55; color: var(--text);
+  transform: translateY(100%); transition: transform .35s cubic-bezier(.2,.7,.2,1);
+}
+#notes-overlay.on { transform: none; }
+#notes-overlay .lbl { font-family: var(--mono); font-size: 12px; letter-spacing: .14em; text-transform: uppercase; color: var(--green); margin-bottom: 8px; }
+#notes-overlay p, #notes-overlay li { font-size: 18px; color: var(--text); margin-bottom: 8px; }
+#notes-overlay ul { padding-left: 20px; }
+#overview {
+  position: fixed; inset: 0; z-index: 50; background: var(--bg); overflow: auto; padding: 40px;
+  display: none; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 22px; align-content: start;
+}
+#overview.on { display: grid; }
+.thumb { aspect-ratio: 16/9; position: relative; overflow: hidden; border-radius: 12px; border: 1px solid var(--line-2); cursor: pointer; background: var(--bg); }
+.thumb.cur { outline: 3px solid var(--green); outline-offset: 3px; }
+.thumb .inner { position: absolute; top: 0; left: 0; width: 1920px; height: 1080px; transform-origin: 0 0; pointer-events: none; }
+.thumb .inner .slide { opacity: 1; visibility: visible; }
+.thumb .inner .r { opacity: 1; transform: none; filter: none; }
+.thumb .cap { position: absolute; left: 0; right: 0; bottom: 0; padding: 8px 12px; font-family: var(--mono); font-size: 12px; color: var(--text); background: linear-gradient(transparent, color-mix(in srgb, var(--bg) 90%, transparent)); }
+#black { position: fixed; inset: 0; background: #000; z-index: 60; display: none; }
+#black.on { display: block; }
+</style>
+</head>
+<body>
+
+<div id="stage">
+
+<!-- ============ 1. TITLE ============ -->
+<section class="slide" data-title="Title">
+  <div class="aurora"><i></i><i></i><i></i></div>
+  <div class="gridbg"></div>
+  <div style="margin:auto 0;">
+    <div class="kicker r">Thu #2 · 29 October</div>
+    <h1 class="r" style="--i:1">Using <em>Playwright</em></h1>
+    <p class="lead r" style="--i:2; margin-top:40px;">Reliable browser automation: from end-to-end tests<br>to AI agents that use the web.</p>
+    <div class="term-line r" style="--i:3"><span class="pr">$</span> npm init playwright@latest<span class="caret"></span></div>
+    <div class="engines r" style="--i:4"><span class="tag">Chromium</span><span class="tag">Firefox</span><span class="tag">WebKit</span></div>
+  </div>
+  <aside class="notes">
+    <p><b>(~1 min)</b> Hi everyone. Quick question to start: hands up if you've ever had a test that passed on your machine and failed in CI. <i>[pause, smile]</i> Keep that feeling in mind.</p>
+    <p>Today has three parts. One: what Playwright is and why it exists. Two: how you actually use it: writing, running and debugging tests, with a live demo. Three: why this same tool is now how AI agents use the web.</p>
+    <p>→ Next: the problem.</p>
+  </aside>
+</section>
+
+<!-- ============ 2. PROBLEM ============ -->
+<section class="slide" data-title="The problem">
+  <div class="kicker r">The problem</div>
+  <h2 class="r" style="--i:1">Why browser tests have a <em>bad reputation</em></h2>
+  <div class="r" style="--i:2"><span class="sleep">await sleep(3000);</span></div>
+  <p class="r" style="--i:3; margin-top:18px;">The most common line in flaky test suites.</p>
+  <div class="problem">
+    <div class="card r" style="--i:4"><div class="idx">01 · TIMING</div><h3>The test is faster than the page</h3><p>So we add sleeps and hope. Too short: it fails. Too long: the suite takes an hour.</p></div>
+    <div class="card r" style="--i:5"><div class="idx">02 · SELECTORS</div><h3>Selectors tied to markup</h3><p><code>div &gt; div:nth-child(3) &gt; .btn-x7f2</code> breaks on the next redesign.</p></div>
+    <div class="card r" style="--i:6"><div class="idx">03 · STATE</div><h3>Tests leak into each other</h3><p>Test A leaves a cookie behind, test B fails. Only sometimes. Only in CI.</p></div>
+  </div>
+  <aside class="notes">
+    <p><b>(~1.5 min)</b> Why do people hate UI tests? Three reasons.</p>
+    <p><b>Timing.</b> Your script runs faster than the page loads, so people add sleep(3000). Too short and it fails randomly, too long and the suite takes forever. <i>[the line gets crossed out on screen]</i></p>
+    <p><b>Selectors.</b> We grab elements by their HTML position or generated CSS classes. A designer changes the layout and 50 tests break, though nothing is actually broken for the user.</p>
+    <p><b>State.</b> Tests share a browser, so cookies or a logged-in session from one test leak into the next.</p>
+    <p>Playwright was designed specifically to remove all three. Let's see how.</p>
+  </aside>
+</section>
+
+<!-- ============ 3. WHAT IT IS ============ -->
+<section class="slide" data-title="What it is">
+  <div class="kicker r">What it is</div>
+  <h2 class="r" style="--i:1">One API to drive <em>every</em> modern browser</h2>
+  <div class="grid facts">
+    <div class="card fact r" style="--i:2"><div class="big">3</div><h3>Browser engines</h3><p>Chromium, Firefox and WebKit (the Safari engine). Headless or visible.</p></div>
+    <div class="card fact r" style="--i:3"><div class="big">4</div><h3>Languages</h3><p>TypeScript / JavaScript, Python, Java and .NET.</p></div>
+    <div class="card fact r" style="--i:4"><div class="big sm">Apache 2.0</div><h3>Open source</h3><p>Built by Microsoft. Free, no vendor lock-in.</p></div>
+    <div class="card fact r" style="--i:5"><div class="big">1</div><h3>Package</h3><p>Test runner, assertions, reports, traces and codegen included.</p></div>
+  </div>
+  <p class="foot r" style="--i:6">Created by the engineers who previously built <b>Puppeteer</b> at Google.</p>
+  <aside class="notes">
+    <p><b>(~1 min)</b> Playwright is an open-source library from Microsoft for controlling browsers with code.</p>
+    <p>Three engines: Chromium (Chrome and Edge), Firefox, and WebKit, the engine behind Safari. So you can test Safari behaviour even on Windows or Linux.</p>
+    <p>Four languages. Today I'll use TypeScript, which is the most popular choice and the one that comes with the full test runner.</p>
+    <p>And it's batteries-included: you don't need to stitch together a runner, an assertion library and a reporter. One install.</p>
+    <p>Fun fact: the team came from Google, where they built Puppeteer, then moved to Microsoft and built Playwright to fix what they couldn't fix there, mainly cross-browser support.</p>
+  </aside>
+</section>
+
+<!-- ============ 4. HOW IT WORKS ============ -->
+<section class="slide" data-title="How it works">
+  <div class="kicker r">Under the hood</div>
+  <h2 class="r" style="--i:1; margin-bottom:48px;">An <em>open line</em>, not a phone call per click</h2>
+
+  <div class="card lane legacy r" style="--i:2">
+    <div><span class="tag bad">Classic WebDriver</span><h3 style="margin-top:14px;">Request, wait, response</h3><p>Every command is a separate HTTP round-trip. To see what changed, the test has to ask again.</p></div>
+    <div class="flow">
+      <div class="node">your test</div>
+      <div class="wire"><small>HTTP · per command</small><span class="dot"></span></div>
+      <div class="node">driver</div>
+      <div class="wire"><small>HTTP</small><span class="dot" style="animation-delay:.3s"></span></div>
+      <div class="node">browser</div>
+    </div>
+  </div>
+
+  <div class="card lane modern r" style="--i:3">
+    <div><span class="tag ok">Playwright</span><h3 style="margin-top:16px;">One persistent connection</h3><p>Commands go one way, events stream back. Playwright knows when the page loads, navigates or a request finishes.</p></div>
+    <div class="flow">
+      <div class="node">your test</div>
+      <div class="wire"><small>both ways</small><span class="dot"></span><span class="dot b"></span><span class="dot c"></span></div>
+      <div class="node hl">Playwright</div>
+      <div class="wire"><small>native protocols</small><span class="dot"></span><span class="dot b"></span></div>
+      <div class="engines-stack"><div class="node">Chromium · CDP</div><div class="node">Firefox</div><div class="node">WebKit</div></div>
+    </div>
+  </div>
+  <aside class="notes">
+    <p><b>(~1.5 min)</b> Here's the key architectural idea, in one picture.</p>
+    <p><b>Top:</b> classic WebDriver, the original Selenium model. Each command (click, type, find) is a separate HTTP request through a driver. It's like making a phone call for every single action, and to know whether something changed you have to call again and ask.</p>
+    <p><b>Bottom:</b> Playwright keeps one connection open, both ways. The browser pushes events: page loaded, request finished, element appeared. That's why Playwright can wait <i>intelligently</i> instead of guessing.</p>
+    <p>Under that, it talks to each engine in its native language: Chrome DevTools Protocol for Chromium, and patched protocols for Firefox and WebKit that the team maintains themselves.</p>
+    <p><i>Being fair:</i> Selenium is evolving too. The new WebDriver BiDi standard brings this two-way model to Selenium. So this isn't about Selenium being bad; it's about the design Playwright started with.</p>
+  </aside>
+</section>
+
+<!-- ============ 5. ISOLATION ============ -->
+<section class="slide" data-title="Isolation">
+  <div class="kicker r">Isolation</div>
+  <h2 class="r" style="--i:1">Every test gets a <em>fresh browser profile</em>, in milliseconds</h2>
+  <div class="row" style="align-items:center; flex:1;">
+    <div class="browser-box f1 r" style="--i:2; flex:1.5;">
+      <div class="label">Browser · launched once</div>
+      <div class="ctxs">
+        <div class="ctx" style="--c:var(--green)"><div class="t">context · test 1</div><ul><li>own cookies</li><li>own storage</li><li>own cache</li></ul><div class="tab">page</div></div>
+        <div class="ctx" style="--c:var(--blue)"><div class="t">context · test 2</div><ul><li>own cookies</li><li>own storage</li><li>own cache</li></ul><div class="tab">page</div></div>
+        <div class="ctx" style="--c:var(--amber)"><div class="t">context · test 3</div><ul><li>own cookies</li><li>own storage</li><li>own cache</li></ul><div class="row" style="gap:10px"><div class="tab f1">page</div><div class="tab f1">page</div></div></div>
+      </div>
+    </div>
+    <div class="col f1 r" style="--i:3;">
+      <h3 style="font-size:40px;">BrowserContext</h3>
+      <p>Like a brand-new incognito window. Created for each test, thrown away after.</p>
+      <p>No leaked logins, no leftover cookies, so tests can safely run <b style="color:var(--text)">in parallel</b>.</p>
+    </div>
+  </div>
+  <aside class="notes">
+    <p><b>(~1 min)</b> This fixes problem number three, shared state.</p>
+    <p>Starting a browser is slow, about a second. So Playwright starts it once. Then for every test, it creates a <b>BrowserContext</b>, which is basically a fresh incognito profile: its own cookies, its own local storage, its own cache. Creating one takes milliseconds.</p>
+    <p>When the test ends, the context is thrown away. Nothing leaks into the next test. And because tests don't share anything, Playwright can run them in parallel.</p>
+    <p>Bonus: two contexts in one test = two different users. Great for testing a chat between Alice and Bob.</p>
+  </aside>
+</section>
+
+<!-- ============ 6. GET STARTED ============ -->
+<section class="slide" data-title="Get started">
+  <div class="kicker r">Getting started</div>
+  <h2 class="r" style="--i:1">From zero to first test in <em>60 seconds</em></h2>
+  <div class="code r" style="--i:2">
+    <div class="code-head"><i></i><i></i><i></i><span>terminal</span></div>
+<pre><span class="g">$</span> npm init playwright@latest        <span class="c"># config, example test, GitHub Actions workflow</span>
+
+<span class="g">$</span> npx playwright test               <span class="c"># run every test: headless, in parallel</span>
+
+<span class="g">$</span> npx playwright test --ui          <span class="c"># UI mode: watch, time-travel, pick locators</span>
+
+<span class="g">$</span> npx playwright codegen &lt;url&gt;      <span class="c"># click around, it writes the test for you</span>
+
+<span class="g">$</span> npx playwright show-report        <span class="c"># HTML report with traces for every failure</span></pre>
+  </div>
+  <p class="foot r" style="--i:3">Prefer the editor? The <b>Playwright VS Code extension</b> runs, debugs and records tests from the sidebar.</p>
+  <aside class="notes">
+    <p><b>(~1 min)</b> Getting started is literally one command: <code>npm init playwright@latest</code>. It asks a few questions, then creates a config file, an example test, and even a GitHub Actions workflow for CI.</p>
+    <p>Then you mostly use four commands. <b>test</b> runs everything. <b>--ui</b> opens UI mode, which I'll show you live. <b>codegen</b> records what you click and writes the code. <b>show-report</b> opens the HTML report.</p>
+    <p>If you live in VS Code, the official extension gives you all of this in the sidebar.</p>
+  </aside>
+</section>
+
+<!-- ============ 7. ANATOMY ============ -->
+<section class="slide" data-title="Anatomy of a test">
+  <div class="kicker r">Writing a test</div>
+  <h2 class="r" style="--i:1">Every test is three steps: <em>go, find, check</em></h2>
+  <div class="row" style="align-items:center; gap:56px;">
+    <div class="code r anatomy" style="--i:2; flex:1.5;">
+      <div class="code-head"><i></i><i></i><i></i><span>tests/todo.spec.ts</span></div>
+<pre><span class="k">import</span> { test, expect } <span class="k">from</span> <span class="s">'@playwright/test'</span>;
+
+<span class="f">test</span>(<span class="s">'user can add a todo'</span>, <span class="k">async</span> ({ <span class="v">page</span> }) <span class="k">=&gt;</span> {
+  <span class="mark"><span class="k">await</span> page.<span class="f">goto</span>(<span class="s">'/todomvc'</span>);</span>
+
+  <span class="k">const</span> input = <span class="mark">page.<span class="f">getByPlaceholder</span>(<span class="s">'What needs to be done?'</span>)</span>;
+  <span class="k">await</span> input.<span class="f">fill</span>(<span class="s">'Prepare Playwright talk'</span>);
+  <span class="k">await</span> input.<span class="f">press</span>(<span class="s">'Enter'</span>);
+
+  <span class="mark"><span class="k">await</span> <span class="f">expect</span>(page.<span class="f">getByTestId</span>(<span class="s">'todo-item'</span>))</span>
+    .<span class="f">toHaveText</span>([<span class="s">'Prepare Playwright talk'</span>]);
+});</pre>
+    </div>
+    <div class="col f1" style="gap:36px;">
+      <div class="row r" style="--i:3; gap:22px;"><div class="num">1</div><div><h3>Go</h3><p class="small"><code class="mono">page</code> is a fresh tab in a fresh context, handed to you by the runner.</p></div></div>
+      <div class="row r" style="--i:4; gap:22px;"><div class="num">2</div><div><h3>Find</h3><p class="small">Locators describe the element the way a user sees it.</p></div></div>
+      <div class="row r" style="--i:5; gap:22px;"><div class="num">3</div><div><h3>Check</h3><p class="small">Assertions retry until true. Notice: zero sleeps.</p></div></div>
+    </div>
+  </div>
+  <aside class="notes">
+    <p><b>(~1.5 min)</b> This is a complete, real test. It runs against Playwright's own demo app, and it's in the demo folder.</p>
+    <p><b>Go:</b> we navigate. Where does <code>page</code> come from? The runner gives it to us. That's called a fixture: a fresh tab in a fresh context for every test.</p>
+    <p><b>Find:</b> we don't use CSS paths. We say "the field with placeholder 'What needs to be done?'", exactly like a human would describe it.</p>
+    <p><b>Check:</b> <code>expect</code> with <code>await</code>. This is a web-first assertion: it keeps retrying until the text appears or the timeout hits. Look at the whole test: not a single sleep.</p>
+  </aside>
+</section>
+
+<!-- ============ 8. AUTO-WAIT ============ -->
+<section class="slide" data-title="Auto-waiting">
+  <div class="kicker r">Auto-waiting</div>
+  <h2 class="r" style="--i:1">Before every click, Playwright <em>checks first</em></h2>
+  <div class="code r" style="--i:2; align-self:flex-start;"><pre style="font-size:30px; padding:24px 36px;"><span class="k">await</span> page.<span class="f">getByRole</span>(<span class="s">'button'</span>, { name: <span class="s">'Buy now'</span> }).<span class="f">click</span>();</pre></div>
+  <div class="checks r" style="--i:3">
+    <div class="chk" style="--n:0"><div class="ico">✓</div>Visible<small>not hidden</small></div><div class="chk-arrow"></div>
+    <div class="chk" style="--n:1"><div class="ico">✓</div>Stable<small>not animating</small></div><div class="chk-arrow"></div>
+    <div class="chk" style="--n:2"><div class="ico">✓</div>Enabled<small>not disabled</small></div><div class="chk-arrow"></div>
+    <div class="chk" style="--n:3"><div class="ico">✓</div>Receives events<small>not covered by a popup</small></div><div class="chk-arrow"></div>
+    <div class="chk go"><div class="ico" style="border-color:#04130a; color:#04130a;">▶</div>Click<small>now it's safe</small></div>
+  </div>
+  <div class="row r" style="--i:4; gap:28px;">
+    <div class="card f1" style="padding:30px 36px;"><h3 style="font-size:28px;">Not ready yet?</h3><p class="small">It retries until it is, or the timeout tells you <b style="color:var(--text)">which check</b> failed.</p></div>
+    <div class="card f1" style="padding:30px 36px;"><h3 style="font-size:28px;">Assertions too</h3><p class="small"><code class="mono" style="color:var(--green)">await expect(x).toBeVisible()</code> retries for up to 5 seconds by default.</p></div>
+  </div>
+  <aside class="notes">
+    <p><b>(~1.5 min)</b> This is the feature that kills flaky tests: <b>auto-waiting</b>.</p>
+    <p>When you write <code>.click()</code>, Playwright doesn't click immediately. It first checks: is the button visible? Is it stable, not in the middle of an animation? Is it enabled? Will it actually receive the click, or is a cookie banner covering it? <i>[checks light up on screen]</i></p>
+    <p>Only when all checks pass does it click. If something isn't ready, it keeps retrying. If it times out, the error tells you exactly which check failed, e.g. "element is covered by div.cookie-banner".</p>
+    <p>Assertions work the same way. So: delete your sleeps.</p>
+  </aside>
+</section>
+
+<!-- ============ 9. LOCATORS ============ -->
+<section class="slide" data-title="Locators">
+  <div class="kicker r">Locators</div>
+  <h2 class="r" style="--i:1">Find elements <em>like a user</em>, not like the DOM</h2>
+  <div class="row" style="gap:56px;">
+    <div class="col f1">
+      <div class="vs bad r" style="--i:2"><span class="tag bad">fragile</span><code>page.locator('#root &gt; div:nth-child(3) &gt; button.btn-x7f2')</code><p>Breaks as soon as someone touches the layout or CSS.</p></div>
+      <div class="vs ok r" style="--i:3"><span class="tag ok">resilient</span><code>page.getByRole('button', { name: 'Sign in' })</code><p>Survives redesigns. Matches what users and screen readers perceive.</p></div>
+    </div>
+    <div class="f1 r" style="--i:4">
+      <p class="mono small" style="margin-bottom:18px; letter-spacing:.12em; text-transform:uppercase;">Recommended order</p>
+      <div class="ladder">
+        <div class="rung"><span class="lvl"></span>getByRole<small>button, link, heading…</small></div>
+        <div class="rung"><span class="lvl"></span>getByLabel<small>form fields</small></div>
+        <div class="rung"><span class="lvl"></span>getByText · getByPlaceholder<small>visible text</small></div>
+        <div class="rung"><span class="lvl"></span>getByTestId<small>data-testid contract</small></div>
+        <div class="rung last"><span class="lvl"></span>CSS / XPath<small>last resort</small></div>
+      </div>
+    </div>
+  </div>
+  <p class="foot r" style="--i:5">Bonus: locators see inside <b>open Shadow DOM</b> automatically, no special syntax.</p>
+  <aside class="notes">
+    <p><b>(~1.5 min)</b> Problem number two: selectors.</p>
+    <p>On the left, the old way: a CSS path through the DOM. It works today and breaks the moment someone wraps that button in another div.</p>
+    <p>The Playwright way: <code>getByRole('button', {name: 'Sign in'})</code>. "The button called Sign in." That doesn't change when the CSS changes, only when the user experience changes, and then the test <i>should</i> fail.</p>
+    <p>On the right, the recommended priority. Role first, then label, then text. Test IDs when nothing else is stable. CSS and XPath only as a last resort.</p>
+    <p>Nice side effect: if getByRole can't find your button, a screen reader probably can't either. Your tests push you toward accessible UI.</p>
+    <p>Pro tip: you don't have to guess locators. UI mode and codegen have a locator picker: hover an element and it gives you the best locator.</p>
+  </aside>
+</section>
+
+<!-- ============ 10. SUPERPOWERS ============ -->
+<section class="slide" data-title="Superpowers">
+  <div class="kicker r">Beyond clicking</div>
+  <h2 class="r" style="--i:1">Six features that feel like <em>cheating</em></h2>
+  <div class="grid powers">
+    <div class="card power r" style="--i:2"><div class="ico">⇄</div><h3>Mock any API</h3><p>Test the UI without a backend, or force error states.</p><code>page.route('**/api/**', r =&gt; r.fulfill({ json }))</code></div>
+    <div class="card power r" style="--i:3"><div class="ico">⚿</div><h3>Log in once</h3><p>Save cookies and storage, reuse them in every test.</p><code>use: { storageState: 'auth.json' }</code></div>
+    <div class="card power r" style="--i:4"><div class="ico">▯</div><h3>Be any device</h3><p>Viewport, touch, GPS, timezone, locale, dark mode.</p><code>use: { ...devices['iPhone 15 Pro'] }</code></div>
+    <div class="card power r" style="--i:5"><div class="ico">◐</div><h3>Catch visual bugs</h3><p>Pixel diff against a baseline, with masks for dynamic parts.</p><code>await expect(page).toHaveScreenshot()</code></div>
+    <div class="card power r" style="--i:6"><div class="ico">⫴</div><h3>Run in parallel</h3><p>Workers on one machine, shards across many CI machines.</p><code>npx playwright test --shard=1/4</code></div>
+    <div class="card power r" style="--i:7"><div class="ico">◎</div><h3>Every browser</h3><p>Same test on Chromium, Firefox and WebKit.</p><code>projects: [chromium, firefox, webkit]</code></div>
+  </div>
+  <aside class="notes">
+    <p><b>(~2 min)</b> Don't explain all six in depth; pick two and go fast through the rest.</p>
+    <p><b>Mock any API</b>: Playwright can intercept network requests and answer them itself. Frontend not blocked by backend; you can also simulate a 500 error to see if your error page works. I'll show this live.</p>
+    <p><b>Log in once</b>: logging in through the UI is slow. Do it once in a setup step, save the session to a JSON file, and every test starts already logged in.</p>
+    <p><b>Devices</b>: there's a built-in list of phones with viewport, touch and user agent. You can also fake GPS location, timezone and language.</p>
+    <p><b>Visual</b>: compare screenshots to a saved baseline, and mask things like timestamps.</p>
+    <p><b>Parallel</b>: workers by default, and sharding to split across CI machines.</p>
+    <p><b>Every browser</b>: list them as projects in the config; the same test runs on all three.</p>
+  </aside>
+</section>
+
+<!-- ============ 11. DEBUGGING ============ -->
+<section class="slide" data-title="Debugging">
+  <div class="kicker r">Debugging</div>
+  <h2 class="r" style="--i:1">When a test fails: <em>time travel</em>, not guesswork</h2>
+  <div class="code trace r" style="--i:2">
+    <div class="tabs"><span class="on">Actions</span><span>Network</span><span>Console</span><span>Source</span><span style="margin-left:auto">trace.zip</span></div>
+    <div class="acts">
+      <div class="act"><span>goto /checkout</span><small>1.2s</small></div>
+      <div class="act sel"><span>fill getByLabel('Card')</span><small>45ms</small></div>
+      <div class="act err"><span>click getByRole('button')</span><small>timeout</small></div>
+    </div>
+    <div class="shot">
+      <div class="app"><h4>Checkout</h4><div class="inp"></div><div class="inp" style="width:60%"></div><div class="btn">Confirm order</div></div>
+      <div class="banner"><span>We use cookies to improve your experience.</span><b>Accept</b></div>
+    </div>
+    <div class="film"><div class="scrub"></div></div>
+    <div class="err-box">✗ locator.click: Timeout 5000ms exceeded · &lt;div class="cookie-banner"&gt; intercepts pointer events</div>
+  </div>
+  <p class="foot r" style="--i:3"><span class="mono" style="color:var(--text)">npx playwright show-trace trace.zip</span> · or drop it on <b>trace.playwright.dev</b></p>
+  <aside class="notes">
+    <p><b>(~1.5 min)</b> A test failed in CI at 3 a.m. What happened? Logs aren't enough.</p>
+    <p>Playwright records a <b>trace</b>: every action, a DOM snapshot before and after each step, network requests, console logs, and the source line. You open it in the Trace Viewer and scroll through time.</p>
+    <p>In this example, the click timed out. In the snapshot we can see why: a cookie banner covers the button. The error message says the same: the cookie-banner div "intercepts pointer events". That's auto-waiting telling you which check failed.</p>
+    <p>It's a zip file. Download it from CI, open it locally or drag it onto trace.playwright.dev; it runs entirely in your browser.</p>
+  </aside>
+</section>
+
+<!-- ============ 12. LIVE DEMO ============ -->
+<section class="slide" data-title="Live demo">
+  <div class="kicker r">Live demo</div>
+  <h2 class="r" style="--i:1; font-size:110px; margin-bottom:56px;"><span class="live-dot"></span>Let's <em>see it</em>.</h2>
+  <div class="demo-steps">
+    <div class="card r" style="--i:2"><div class="num">1</div><code>npx playwright test --ui</code><p>Run the tests, watch them, scrub through time, pick a locator.</p></div>
+    <div class="card r" style="--i:3"><div class="num">2</div><code>npx playwright codegen demo.playwright.dev/todomvc</code><p>Click around and watch the test write itself.</p></div>
+    <div class="card r" style="--i:4"><div class="num">3</div><code>npx playwright test 3-ai-view</code><p>What does an AI actually “see” on a web page?</p></div>
+  </div>
+  <p class="foot r" style="--i:5">Plan B: <b>npx playwright show-report</b> (pre-recorded traces, works offline)</p>
+  <aside class="notes">
+    <p><b>(~4 min)</b> Switch to the terminal. You're in the <code>demo</code> folder. Font size up (Cmd +) first!</p>
+    <ul>
+      <li><b>1.</b> <code>npx playwright test --ui</code> → click ▶ on the whole suite. Click the todo test, then click a step in the left timeline and show the before/after snapshot. Click the locator-picker icon and hover the input: "it suggests getByPlaceholder for me." Open the mock test: "Mango and Playwright Kiwi don't exist on the real server; we invented the API response."</li>
+      <li><b>2.</b> <code>npx playwright codegen demo.playwright.dev/todomvc</code> → type a todo, press Enter, tick it. Point at the code window: "getByRole, getByPlaceholder, written for me." Add an assertion with the eye/check icons in the toolbar if you're comfortable.</li>
+      <li><b>3.</b> <code>npx playwright test 3-ai-view</code> → read the two numbers out loud, scroll through the snapshot: "this is what an AI agent reads instead of HTML." This bridges into part 3.</li>
+    </ul>
+    <p>If Wi-Fi dies: <code>npx playwright show-report</code> and open a test's trace. Everything is already recorded.</p>
+  </aside>
+</section>
+
+<!-- ============ 13. PIVOT ============ -->
+<section class="slide s-ai pivot center" data-title="Pivot to AI">
+  <div class="kicker r" style="justify-content:center;">Part 3 · AI agents</div>
+  <h2 class="r" style="--i:1">Same engine.<br><em>New driver.</em></h2>
+  <p class="quote r" style="--i:2">“Playwright enables reliable web automation for testing, scripting, and AI agents.”</p>
+  <p class="src r" style="--i:3">the headline on playwright.dev today</p>
+  <aside class="notes">
+    <p><b>(~45 s)</b> Here's the twist. Everything we just saw (reliable clicks, semantic locators, waiting for the page) is exactly what an AI needs to use a website.</p>
+    <p>For years, humans wrote the scripts. Now, AI models drive the browser, and Playwright is the hands they use.</p>
+    <p>This isn't my interpretation: it's literally the headline on playwright.dev right now. "Testing, scripting, <i>and AI agents</i>."</p>
+  </aside>
+</section>
+
+<!-- ============ 14. WHAT AI SEES ============ -->
+<section class="slide s-ai" data-title="What an AI sees">
+  <div class="kicker r">What an AI sees</div>
+  <h2 class="r" style="--i:1; margin-bottom:48px;">AI needs <em>meaning</em>, not HTML</h2>
+  <div class="versus">
+    <div class="code r" style="--i:2">
+      <div class="code-head"><i></i><i></i><i></i><span>page.content()</span></div>
+<pre class="noise">&lt;svg data-component="Octicon" aria-hidden=
+"true" focusable="false" class="octicon octic
+on-three-bars" viewBox="0 0 16 16" width="16"
+ height="16" fill="currentColor" display="inl
+ine-block" overflow="visible" style="vertical
+-align:text-bottom"&gt;&lt;path d="M1 2.75A.75.75
+ 0 0 1 1.75 2h12.5a.75.75 0 0 1 0 1.5H1.75A.7
+5.75 0 0 1 1 2.75Zm0 5A.75.75 0 0 1 1.75 7h12
+.5a.75.75 0 0 1 0 1.5H1.75A.75.75 0 0 1 1 7.7
+5ZM1.75 12h12.5a.75.75 0 0 1 0 1.5H1.75a.75.7
+5 0 0 1 0-1.5Z"&gt;&lt;/path&gt;&lt;/svg&gt;&lt;/button&gt;…
+<b>…that was one icon. 427,350 characters total.</b></pre>
+      <div class="meter"><strong>427,350</strong> chars · mostly noise</div>
+    </div>
+    <div class="arrow-mid r" style="--i:3"><div class="x">~8×</div><small>less text,<br>all signal</small></div>
+    <div class="code r" style="--i:4">
+      <div class="code-head"><i></i><i></i><i></i><span>page.ariaSnapshot({ mode: 'ai' })</span></div>
+<pre>- <span class="k">navigation</span> <span class="s">"Global"</span> <span class="ref">[ref=e18]</span>
+  - <span class="k">button</span> <span class="s">"Search or jump to…"</span> <span class="ref">[ref=e44]</span>
+- <span class="k">navigation</span> <span class="s">"Repository"</span> <span class="ref">[ref=e81]</span>
+  - <span class="k">link</span> <span class="s">"Code"</span> <span class="ref">[ref=e84]</span>
+  - <span class="k">link</span> <span class="s">"Actions"</span> <span class="ref">[ref=e109]</span>
+- <span class="k">heading</span> <span class="s">"Folders and files"</span> <span class="ref">[ref=e212]</span>
+- <span class="k">heading</span> <span class="s">"🎭 Playwright"</span> [level=1] <span class="ref">[ref=e608]</span>
+  - <span class="k">heading</span> <span class="s">"Get Started"</span> <span class="ref">[ref=e632]</span>
+  - <span class="k">heading</span> <span class="s">"Install"</span> <span class="ref">[ref=e688]</span>
+  - <span class="k">heading</span> <span class="s">"Write a test"</span> <span class="ref">[ref=e708]</span>
+  …</pre>
+      <div class="meter"><strong>51,117</strong> chars · roles + names + refs</div>
+    </div>
+  </div>
+  <p class="foot r" style="--i:5">Measured on github.com/microsoft/playwright with the demo test (Oct 2026). The same tree screen readers use.</p>
+  <aside class="notes">
+    <p><b>(~1.5 min)</b> If you want an AI to use a website, you have to describe the page to it. Option one: give it the raw HTML. On the left is a real piece of GitHub's HTML. That whole block is <i>one hamburger icon</i>. The full page is over 400,000 characters, and almost none of it means anything to the AI. Every character costs tokens, money and attention.</p>
+    <p>On the right: the <b>ARIA snapshot</b>, the accessibility tree that screen readers use. Just roles and names: a navigation, a link called Code, a heading. That's what the AI needs to decide what to do.</p>
+    <p>These numbers are real: I measured them with the demo test you just saw. About eight times less text, and it's all signal. (On a lean page like playwright.dev it's closer to 2×; the heavier the app, the bigger the win.)</p>
+    <p>The <code>[ref=e84]</code> bits are IDs the agent uses to say "click this one". Same idea as <code>getByRole</code>: good locators for humans are good locators for AI.</p>
+  </aside>
+</section>
+
+<!-- ============ 15. AGENT LOOP ============ -->
+<section class="slide s-ai" data-title="Agent loop">
+  <div class="kicker r">How agents use it</div>
+  <h2 class="r" style="--i:1">The agent loop: <em>observe, think, act</em></h2>
+  <div class="row" style="align-items:center; gap:80px; flex:1; margin-top:-20px;">
+    <div class="loop r" style="--i:2">
+      <div class="ring"></div>
+      <div class="hub"><div><b>MCP</b><small>Model Context<br>Protocol</small></div></div>
+      <div class="step s1" style="--n:0"><b>1 · Observe</b><span>browser_snapshot</span></div>
+      <div class="step s2" style="--n:1"><b>2 · Think</b><span>LLM picks next step</span></div>
+      <div class="step s3" style="--n:2"><b>3 · Act</b><span>browser_click(ref=e84)</span></div>
+      <div class="step s4" style="--n:3"><b>4 · Execute</b><span>auto-wait, then click</span></div>
+    </div>
+    <div class="col f1 try r" style="--i:3; gap:34px;">
+      <div><h3>Give an AI a browser</h3><code>npx playwright mcp</code><p>Plug it into Claude, Copilot, Cursor… and ask it to use a site.</p></div>
+      <div><h3>Let AI help write tests</h3><code>npx playwright init-agents --loop=claude</code><div class="agents"><span class="tag">planner</span><span class="tag">generator</span><span class="tag">healer</span></div></div>
+    </div>
+  </div>
+  <aside class="notes">
+    <p><b>(~1.5 min)</b> So how does it fit together? Through <b>MCP</b>, the Model Context Protocol, a standard way for AI models to call tools.</p>
+    <p>The loop: <b>Observe</b>: Playwright gives the model an ARIA snapshot. <b>Think</b>: the model decides "I need to click Get started". <b>Act</b>: it sends a tool call, browser_click with the ref. <b>Execute</b>: Playwright performs it, with all the auto-waiting we talked about. Then observe again. Repeat until the task is done.</p>
+    <p>On the right, two things you can try today. <code>npx playwright mcp</code> starts the official MCP server, built into Playwright, and you connect it to an AI assistant.</p>
+    <p>And <code>init-agents</code> sets up three test agents: a <b>planner</b> that explores your app and writes a test plan, a <b>generator</b> that turns it into Playwright tests, and a <b>healer</b> that tries to fix tests when they break.</p>
+    <p>Realistic note: these are helpers. A human still reviews what they write.</p>
+  </aside>
+</section>
+
+<!-- ============ 16. TAKEAWAYS ============ -->
+<section class="slide" data-title="Takeaways">
+  <div class="kicker r">Takeaways</div>
+  <h2 class="r" style="--i:1">If you remember <em>three things</em></h2>
+  <div class="takeaways">
+    <div class="card take r" style="--i:2"><div class="n">1</div><h3>Let Playwright wait.</h3><p>delete every sleep()</p></div>
+    <div class="card take r" style="--i:3"><div class="n">2</div><h3>Locate like a user.</h3><p>getByRole first</p></div>
+    <div class="card take r" style="--i:4"><div class="n">3</div><h3>Debug with traces.</h3><p>not console.log</p></div>
+  </div>
+  <div class="foot r" style="--i:5; justify-content:space-between;">
+    <span style="font-size:56px; font-weight:700; color:var(--text); letter-spacing:-.03em;">Questions<em>?</em></span>
+    <span class="links"><span class="tag">playwright.dev</span><span class="tag">demo.playwright.dev</span><span class="tag">github.com/microsoft/playwright</span></span>
+  </div>
+  <aside class="notes">
+    <p><b>(~45 s)</b> If you forget everything else, remember three things.</p>
+    <p><b>One:</b> let Playwright wait. If you see a sleep in a test, it's a bug waiting to happen.</p>
+    <p><b>Two:</b> locate like a user. getByRole first. Your tests get stable and your app gets more accessible.</p>
+    <p><b>Three:</b> when something fails, open the trace. It shows you what happened instead of making you guess.</p>
+    <p>And the same skills now power AI agents on the web. Thank you! Questions?</p>
+  </aside>
+</section>
+
+</div>
+
+<div id="progress"></div>
+<div id="counter"></div>
+<div id="hint"><kbd>→</kbd> next · <kbd>P</kbd> presenter · <kbd>N</kbd> notes · <kbd>O</kbd> overview · <kbd>F</kbd> fullscreen · <kbd>T</kbd> theme · <kbd>?</kbd> help</div>
+<div id="notes-overlay"><div class="lbl" id="notes-lbl">Speaker notes</div><div id="notes-body"></div></div>
+<div id="overview"></div>
+<div id="black"></div>
+
+<script>
+(() => {
+  const stage = document.getElementById('stage');
+  const slides = [...document.querySelectorAll('#stage > .slide')];
+  const progress = document.getElementById('progress');
+  const counter = document.getElementById('counter');
+  const hint = document.getElementById('hint');
+  const notesOverlay = document.getElementById('notes-overlay');
+  const notesBody = document.getElementById('notes-body');
+  const notesLbl = document.getElementById('notes-lbl');
+  const overview = document.getElementById('overview');
+  const black = document.getElementById('black');
+  let cur = 0, presenter = null, startedAt = null;
+
+  const notesOf = i => slides[i]?.querySelector('.notes')?.innerHTML || '<p>(no notes)</p>';
+  const titleOf = i => slides[i]?.dataset.title || '';
+
+  function fit() {
+    const s = Math.min(innerWidth / 1920, innerHeight / 1080);
+    stage.style.transform = `translate(-50%, -50%) scale(${s})`;
+  }
+
+  function go(n, replay) {
+    n = Math.max(0, Math.min(slides.length - 1, n));
+    if (n === cur && !replay && slides[n].classList.contains('active')) return;
+    slides.forEach(s => s.classList.remove('active'));
+    void slides[n].offsetWidth; // restart entrance animations
+    slides[n].classList.add('active');
+    cur = n;
+    progress.style.width = ((n + 1) / slides.length * 100) + '%';
+    counter.textContent = String(n + 1).padStart(2, '0') + ' / ' + String(slides.length).padStart(2, '0');
+    notesBody.innerHTML = notesOf(n);
+    notesLbl.textContent = `Speaker notes · ${n + 1}. ${titleOf(n)}`;
+    history.replaceState(null, '', '#' + (n + 1));
+    updatePresenter();
+  }
+
+  // ---------- Presenter window ----------
+  const PRESENTER_HTML = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Presenter · Using Playwright</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#0b0d10;color:#e8eaed;font-family:Inter,system-ui,sans-serif;display:grid;grid-template-rows:auto 1fr auto;height:100vh}
+header{display:flex;align-items:center;gap:24px;padding:18px 28px;border-bottom:1px solid #22272e}
+#ttl{font-size:22px;font-weight:700}#num{font-family:ui-monospace,monospace;color:#45d06a;font-size:18px}
+#timer{margin-left:auto;font-family:ui-monospace,monospace;font-size:34px;font-weight:600;font-variant-numeric:tabular-nums}
+#clock{font-family:ui-monospace,monospace;color:#7d8590;font-size:18px}
+button{background:#1b2129;color:#e8eaed;border:1px solid #30363d;border-radius:8px;padding:8px 14px;font-size:15px;cursor:pointer}
+main{overflow:auto;padding:28px 36px;font-size:24px;line-height:1.55}
+main p,main li{margin-bottom:14px}main ul{padding-left:26px}main b{color:#fff}main i{color:#f5b84a}
+main code{font-family:ui-monospace,monospace;font-size:.85em;background:#1b2129;padding:2px 6px;border-radius:5px;color:#45d06a}
+footer{display:flex;align-items:center;gap:18px;padding:16px 28px;border-top:1px solid #22272e;color:#9aa1ab;font-size:18px}
+footer b{color:#e8eaed}#bar{flex:1;height:4px;background:#22272e;border-radius:2px;overflow:hidden}#bar i{display:block;height:100%;background:#45d06a}
+</style></head><body>
+<header><span id="num"></span><span id="ttl"></span><span id="clock"></span><span id="timer">00:00</span><button id="reset">Reset</button></header>
+<main id="notes"></main>
+<footer><button id="prev">← Prev</button><span>Next: <b id="next"></b></span><div id="bar"><i id="fill"></i></div><button id="nxt">Next →</button></footer>
+</body></html>`;
+
+  function openPresenter() {
+    if (presenter && !presenter.closed) { presenter.focus(); return; }
+    presenter = window.open('', 'pw-presenter', 'width=1100,height=760');
+    if (!presenter) { alert('Allow pop-ups for this file to use presenter view.'); return; }
+    presenter.document.open(); presenter.document.write(PRESENTER_HTML); presenter.document.close();
+    const d = presenter.document;
+    d.getElementById('prev').onclick = () => go(cur - 1);
+    d.getElementById('nxt').onclick = () => go(cur + 1);
+    d.getElementById('reset').onclick = () => { startedAt = Date.now(); tick(); };
+    presenter.addEventListener('keydown', onKey);
+    startedAt = startedAt || Date.now();
+    updatePresenter();
+  }
+  function updatePresenter() {
+    if (!presenter || presenter.closed) return;
+    const d = presenter.document;
+    d.getElementById('num').textContent = `${cur + 1} / ${slides.length}`;
+    d.getElementById('ttl').textContent = titleOf(cur);
+    d.getElementById('notes').innerHTML = notesOf(cur);
+    d.getElementById('next').textContent = cur < slides.length - 1 ? titleOf(cur + 1) : '(end)';
+    d.getElementById('fill').style.width = ((cur + 1) / slides.length * 100) + '%';
+    d.getElementById('notes').scrollTop = 0;
+  }
+  function tick() {
+    if (!presenter || presenter.closed) return;
+    const s = Math.floor((Date.now() - startedAt) / 1000);
+    presenter.document.getElementById('timer').textContent = String(Math.floor(s / 60)).padStart(2, '0') + ':' + String(s % 60).padStart(2, '0');
+    presenter.document.getElementById('clock').textContent = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  }
+  setInterval(tick, 1000);
+
+  // ---------- Overview ----------
+  function buildOverview() {
+    overview.innerHTML = '';
+    slides.forEach((s, i) => {
+      const t = document.createElement('div');
+      t.className = 'thumb' + (i === cur ? ' cur' : '');
+      const inner = document.createElement('div');
+      inner.className = 'inner';
+      inner.appendChild(s.cloneNode(true));
+      t.appendChild(inner);
+      const cap = document.createElement('div');
+      cap.className = 'cap'; cap.textContent = `${i + 1}. ${titleOf(i)}`;
+      t.appendChild(cap);
+      t.onclick = () => { toggleOverview(false); go(i, true); };
+      overview.appendChild(t);
+    });
+    requestAnimationFrame(() => overview.querySelectorAll('.thumb').forEach(t => {
+      t.querySelector('.inner').style.transform = `scale(${t.clientWidth / 1920})`;
+    }));
+  }
+  function toggleOverview(force) {
+    const on = force ?? !overview.classList.contains('on');
+    overview.classList.toggle('on', on);
+    if (on) buildOverview();
+  }
+
+  function toggleFullscreen() {
+    if (!document.fullscreenElement) document.documentElement.requestFullscreen?.();
+    else document.exitFullscreen?.();
+  }
+  function toggleTheme() {
+    const light = document.documentElement.dataset.theme !== 'light';
+    document.documentElement.dataset.theme = light ? 'light' : 'dark';
+    try { localStorage.setItem('pw-deck-theme', light ? 'light' : 'dark'); } catch (e) {}
+  }
+
+  function onKey(e) {
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+    const k = e.key;
+    if (['ArrowRight', 'ArrowDown', 'PageDown', ' ', 'Enter'].includes(k)) { e.preventDefault(); go(cur + 1); }
+    else if (['ArrowLeft', 'ArrowUp', 'PageUp', 'Backspace'].includes(k)) { e.preventDefault(); go(cur - 1); }
+    else if (k === 'Home') go(0);
+    else if (k === 'End') go(slides.length - 1);
+    else if (k === 'p' || k === 'P') openPresenter();
+    else if (k === 'n' || k === 'N') notesOverlay.classList.toggle('on');
+    else if (k === 'o' || k === 'O' || k === 'Escape') toggleOverview(k === 'Escape' ? false : undefined);
+    else if (k === 'f' || k === 'F') toggleFullscreen();
+    else if (k === 't' || k === 'T') toggleTheme();
+    else if (k === 'b' || k === 'B' || k === '.') black.classList.toggle('on');
+    else if (k === 'r' || k === 'R') go(cur, true);
+    else if (k === '?') { hint.style.opacity = hint.style.opacity === '0' ? '1' : '0'; }
+    else if (/^[0-9]$/.test(k)) { /* type two digits quickly to jump */
+      onKey.buf = (onKey.buf || '') + k; clearTimeout(onKey.t);
+      onKey.t = setTimeout(() => { go(parseInt(onKey.buf, 10) - 1, true); onKey.buf = ''; }, 450);
+    }
+  }
+
+  document.addEventListener('keydown', onKey);
+  document.addEventListener('click', e => {
+    if (overview.classList.contains('on') || e.target.closest('#notes-overlay')) return;
+    go(cur + (e.clientX < innerWidth * 0.25 ? -1 : 1));
+  });
+  addEventListener('resize', fit);
+  addEventListener('hashchange', () => go(parseInt(location.hash.slice(1), 10) - 1 || 0));
+  setTimeout(() => { hint.style.opacity = '0'; }, 6000);
+
+  try { if (localStorage.getItem('pw-deck-theme') === 'light') document.documentElement.dataset.theme = 'light'; } catch (e) {}
+  fit();
+  cur = -1;
+  go((parseInt(location.hash.slice(1), 10) || 1) - 1);
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,14 @@
+node_modules/
+test-results/
+playwright-report/
+blob-report/
+.DS_Store
+~$*
+
+# fișiere personale / de lucru, nu pentru profesor
+stan-cosmin-wade.zip
+SCRIPT-EXPLICAT.pdf
+GHID-PREZENTARE.md
+CE-SPUN-PE-SLIDE.md
+SPEAKER-NOTES-RO.md
+SCRIPT-SCURT.md
